@@ -185,6 +185,26 @@ useEffect(() => {
       console.error("Error during logout:", error);
     }
   };
-  
 
+  // get userinfo from web3
+
+    const getUserInfo = async () => {
+    if (web3auth.connected) {
+      const user = await web3auth.getUserInfo();
+      setUserInfo(user);
+      if (user.email) {
+        localStorage.setItem('userEmail', user.email);
+        try {
+          await createUser(user.email, user.name || 'Anonymous User');
+        } catch (error) {
+          console.error("Error creating user:", error);
+          // Handle the error appropriately, maybe show a message to the user
+        }
+      }
+    }
+  };
+
+
+
+  
 }
