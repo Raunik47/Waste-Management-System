@@ -1,4 +1,5 @@
 
+
 //  @ts-nocheck
 'use client'
 
@@ -167,5 +168,23 @@ useEffect(() => {
     }
   };
 
+  // logout logic 
+
+   const logout = async () => {
+    if (!web3auth) {
+      console.log("web3auth not initialized yet");
+      return;
+    }
+    try {
+      await web3auth.logout();
+      setProvider(null);
+      setLoggedIn(false);
+      setUserInfo(null);
+      localStorage.removeItem('userEmail');
+    } catch (error) {
+      console.error("Error during logout:", error);
+    }
+  };
+  
 
 }
