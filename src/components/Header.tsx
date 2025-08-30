@@ -9,6 +9,8 @@ import { usePathname } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Menu, Coins, Leaf, Search, Bell, User, ChevronDown, LogIn, LogOut } from "lucide-react"
 
+
+
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -23,6 +25,7 @@ import {Web3Auth} from "@web3auth/modal"
 import { CHAIN_NAMESPACES, IProvider, WEB3AUTH_NETWORK } from "@web3auth/base"
 import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider"
 import { createUser } from "../../utils/db/actions"
+import { useMediaQuery } from "../../hooks/useMediaQuery"
 
 const clientId=process.env.WEB3_AUTH_CLIENT_ID
 
@@ -43,7 +46,7 @@ const chainConfig = {
 
 const web3auth = new Web3Auth({
   clientId,
-  web3AuthNetwork: WEB3AUTH_NETWORK.TESTNET, // Changed from SAPPHIRE_MAINNET to TESTNET
+  web3AuthNetwork:WEB3AUTH_NETWORK .SAPPHIRE_DEVNET,
   privateKeyProvider,
 });
 
@@ -59,6 +62,8 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
   const [userInfo, setUserInfo] = useState<any>(null);
   const pathname = usePathname()
   const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  
   const isMobile = useMediaQuery("(max-width: 768px)")
   const [balance, setBalance] = useState(0)
 
@@ -67,7 +72,7 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
   useEffect(() => {
     const init = async () => {
       try {
-        await web3auth.initModal();
+        await web3auth.init();
         setProvider(web3auth.provider);
 
         if (web3auth.connected) {
@@ -205,6 +210,72 @@ useEffect(() => {
   };
 
 
+const handleNotificationClick = async (notificationId: number) => {
+    await markNotificationAsRead(notificationId);
+    setNotifications(prevNotifications => 
+      prevNotifications.filter(notification => notification.id !== notificationId)
+    );
+  };
 
-  
+  if (loading) {
+    return <div>Loading Web3Auth...</div>;
+  }
+
+
+return (
+  <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+    <div className="flex items-center justify-between px-4 md:px-6 py-2 md:py-3">
+      {/* Left Section */}
+      <div className="flex items-center gap-3">
+        {/* Sidebar/Menu Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="mr-1 md:mr-3 hover:bg-green-50"
+          onClick={onMenuClick}
+        >
+          <Menu className="h-6 w-6 text-gray-800" />
+        </Button>
+
+        {/* Logo + Branding */}
+        <Link
+          href="/"
+          className="flex items-center group"
+        >
+          {/* Leaf Icon */}
+          <Leaf className="h-6 w-6 md:h-8 md:w-8 text-green-600 transition-transform group-hover:scale-110" />
+
+          {/* Branding Text */}
+          <div className="flex flex-col leading-tight ml-1 md:ml-2">
+            <span className="font-extrabold text-base md:text-lg text-green-700 tracking-wide">
+              Paryavaran
+            </span>
+            <span className="text-[10px] md:text-xs text-gray-500 -mt-0.5">
+              Smart Waste Management
+            </span>
+          </div>
+        </Link>
+      </div>
+
+   {!isMobile && (
+          <div className="flex-1 max-w-xl mx-4">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search..."
+                className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            </div>
+          </div>
+        )}
+
+    </div>
+  </header>
+);
+
+
+
 }
+
+// export default Header;
