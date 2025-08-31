@@ -8,6 +8,7 @@ import Header from "@/components/Header"
 import Sidebar from "@/components/Sidebar"
 
 const inter = Inter({ subsets: ['latin'] })
+
 export default function RootLayout({
   children,
 }:{
@@ -19,7 +20,7 @@ export default function RootLayout({
 return (
     <html lang="en">
       <body className={inter.className}>
-        <div className="min-h-screen bg-emerald-200 flex flex-col">
+        <div className="min-h-screenfrom-green-400 p-4 shadow-lg flex flex-col">
           {/* header*/}
           <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} totalEarnings={totalEarnings} />
 
@@ -27,8 +28,8 @@ return (
             {/* <Sidebar open={sidebarOpen} /> */}
 
             <Sidebar open={sidebarOpen}/>
-            
-            <main className="flex-1 p-4 lg:p-8 ml-0 lg:ml-64 transition-all duration-300">
+
+            <main className="flex-1 p-2 lg:p-8 ml-0 lg:ml-64 transition-all duration-300">
               {children}
             </main>
           </div>
