@@ -4,13 +4,22 @@ import { eq, sql, and, desc, ne } from 'drizzle-orm';
 
 export async function createUser(email: string, name: string) {
   try {
-    const [user] = await db.insert(Users).values({ email, name }).returning().execute();
+    const [user] = await db
+      .insert(Users)
+      .values({ email, name }) // don’t touch id or createdAt
+      .returning({
+        id: Users.id,
+        email: Users.email,
+        name: Users.name,
+        createdAt: Users.createdAt,
+      });
     return user;
   } catch (error) {
     console.error("Error creating user:", error);
     return null;
-  } 
+  }
 }
+
 
 // get user by the email
 
