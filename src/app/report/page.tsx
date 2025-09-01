@@ -383,7 +383,7 @@ export default function ReportPage() {
             />
           </div>
         </div>
-        {/* <Button 
+        <Button 
           type="submit" 
           className="w-full bg-green-600 hover:bg-green-700 text-white py-3 text-lg rounded-xl transition-colors duration-300 flex items-center justify-center"
           disabled={isSubmitting}
@@ -394,7 +394,7 @@ export default function ReportPage() {
               Submitting...
             </>
           ) : 'Submit Report'}
-        </Button> */}
+        </Button>
       </form>
 
       <h2 className="text-3xl font-semibold mb-6 text-gray-800">Recent Reports</h2>
