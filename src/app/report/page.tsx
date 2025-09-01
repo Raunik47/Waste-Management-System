@@ -85,6 +85,8 @@ export default function ReportPage() {
     setNewReport({ ...newReport, [name]: value })
   }
 
+//   Purpose: Handle image file selection and create preview
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0]
@@ -97,6 +99,8 @@ export default function ReportPage() {
     }
   }
 
+//   Purpose: Convert file to base64 string (promise-based version)
+
   const readFileAsBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -106,26 +110,33 @@ export default function ReportPage() {
     });
   };
 
+//   Purpose: Send image to Gemini AI for waste analysis and verification
+
   const handleVerify = async () => {
     if (!file) return
 
     setVerificationStatus('verifying')
     
     try {
+        // Initialize Gemini AI client
       const genAI = new GoogleGenerativeAI(geminiApiKey!);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
+       // Convert image to base64 for API
       const base64Data = await readFileAsBase64(file);
 
+       // Prepare image data for Gemini API
       const imageParts = [
         {
           inlineData: {
-            data: base64Data.split(',')[1],
-            mimeType: file.type,
+            data: base64Data.split(',')[1], // Remove data URL prefix
+            mimeType: file.type, // e.g., "image/jpeg"
           },
         },
       ];
 
+      
+    // Detailed prompt for AI analysis
       const prompt = `You are an expert in waste management and recycling. Analyze this image and provide:
         1. The type of waste (e.g., plastic, paper, glass, metal, organic)
         2. An estimate of the quantity or amount (in kg or liters)
@@ -138,21 +149,28 @@ export default function ReportPage() {
           "confidence": confidence level as a number between 0 and 1
         }`;
 
+ // Send request to Gemini AI
       const result = await model.generateContent([prompt, ...imageParts]);
       const response = await result.response;
       const text = response.text();
       
       try {
+           // Parse AI response
         const parsedResult = JSON.parse(text);
+        // Validate response structure
         if (parsedResult.wasteType && parsedResult.quantity && parsedResult.confidence) {
+            
+        // Update state with AI results
           setVerificationResult(parsedResult);
           setVerificationStatus('success');
           setNewReport({
             ...newReport,
-            type: parsedResult.wasteType,
-            amount: parsedResult.quantity
+            type: parsedResult.wasteType, // Auto-fill waste type
+            amount: parsedResult.quantity  // Auto-fill amount
           });
         } else {
+
+             // Handle invalid response
           console.error('Invalid verification result:', parsedResult);
           setVerificationStatus('failure');
         }
@@ -161,10 +179,13 @@ export default function ReportPage() {
         setVerificationStatus('failure');
       }
     } catch (error) {
+          // Handle JSON parsing error
       console.error('Error verifying waste:', error);
       setVerificationStatus('failure');
     }
   }
+
+//   Purpose: Submit the complete waste report to backend
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,6 +196,7 @@ export default function ReportPage() {
     
     setIsSubmitting(true);
     try {
+         // Send data to backend
       const report = await createReport(
         user.id,
         newReport.location,
@@ -184,14 +206,17 @@ export default function ReportPage() {
         verificationResult ? JSON.stringify(verificationResult) : undefined
       ) as any;
       
+      // Format report for UI display
       const formattedReport = {
         id: report.id,
         location: report.location,
         wasteType: report.wasteType,
         amount: report.amount,
-        createdAt: report.createdAt.toISOString().split('T')[0]
+        createdAt: report.createdAt.toISOString().split('T')[0] 
       };
       
+       
+    // Update UI with new report
       setReports([formattedReport, ...reports]);
       setNewReport({ location: '', type: '', amount: '' });
       setFile(null);
@@ -199,7 +224,7 @@ export default function ReportPage() {
       setVerificationStatus('idle');
       setVerificationResult(null);
       
-
+ // Show success message
       toast.success(`Report submitted successfully! You've earned points for reporting waste.`);
     } catch (error) {
       console.error('Error submitting report:', error);
