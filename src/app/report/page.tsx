@@ -330,7 +330,7 @@ export default function ReportPage() {
                 onLoad={onLoad}
                 onPlacesChanged={onPlacesChanged}
               >
-                {/* <input
+                <input
                   type="text"
                   id="location"
                   name="location"
@@ -339,7 +339,7 @@ export default function ReportPage() {
                   required
                   className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300"
                   placeholder="Enter waste location"
-                /> */}
+                />
               </StandaloneSearchBox>
             ) : (
               <input
