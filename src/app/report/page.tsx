@@ -292,7 +292,7 @@ export default function ReportPage() {
           </div>
         )}
         
-        {/* <Button 
+        <Button 
           type="button" 
           onClick={handleVerify} 
           className="w-full mb-8 bg-blue-600 hover:bg-blue-700 text-white py-3 text-lg rounded-xl transition-colors duration-300" 
@@ -304,7 +304,7 @@ export default function ReportPage() {
               Verifying...
             </>
           ) : 'Verify Waste'}
-        </Button> */}
+        </Button>
 
         {verificationStatus === 'success' && verificationResult && (
           <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-8 rounded-r-xl">
