@@ -286,11 +286,11 @@ export default function ReportPage() {
           </div>
         </div>
         
-        {/* {preview && (
+        {preview && (
           <div className="mt-4 mb-8">
             <img src={preview} alt="Waste preview" className="max-w-full h-auto rounded-xl shadow-md" />
           </div>
-        )} */}
+        )}
         
         {/* <Button 
           type="button" 
