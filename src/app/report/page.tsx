@@ -313,8 +313,8 @@ export default function ReportPage() {
               <div>
                 <h3 className="text-lg font-medium text-green-800">Verification Successful</h3>
                 <div className="mt-2 text-sm text-green-700">
-                  {/* <p>Waste Type: {verificationResult.wasteType}</p>
-                  <p>Quantity: {verificationResult.quantity}</p> */}
+                  <p>Waste Type: {verificationResult.wasteType}</p>
+                  <p>Quantity: {verificationResult.quantity}</p>
                   <p>Confidence: {(verificationResult.confidence * 100).toFixed(2)}%</p>
                 </div>
               </div>
