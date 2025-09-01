@@ -325,12 +325,12 @@ export default function ReportPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
           <div>
             <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">Location</label>
-            {/* {isLoaded ? (
+            {isLoaded ? (
               <StandaloneSearchBox
                 onLoad={onLoad}
                 onPlacesChanged={onPlacesChanged}
               >
-                <input
+                {/* <input
                   type="text"
                   id="location"
                   name="location"
@@ -339,7 +339,7 @@ export default function ReportPage() {
                   required
                   className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300"
                   placeholder="Enter waste location"
-                />
+                /> */}
               </StandaloneSearchBox>
             ) : (
               <input
@@ -352,7 +352,7 @@ export default function ReportPage() {
                 className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300"
                 placeholder="Enter waste location"
               />
-            )} */}
+            )}
           </div>
           <div>
             <label htmlFor="type" className="block text-sm font-medium text-gray-700 mb-1">Waste Type</label>
