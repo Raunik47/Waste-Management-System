@@ -370,7 +370,7 @@ export default function ReportPage() {
           </div>
           <div>
             <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">Estimated Amount</label>
-            {/* <input
+            <input
               type="text"
               id="amount"
               name="amount"
@@ -380,7 +380,7 @@ export default function ReportPage() {
               className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300 bg-gray-100"
               placeholder="Verified amount"
               readOnly
-            /> */}
+            />
           </div>
         </div>
         {/* <Button 
