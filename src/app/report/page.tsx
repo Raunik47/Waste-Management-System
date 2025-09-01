@@ -39,15 +39,22 @@ export default function ReportPage() {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [verificationStatus, setVerificationStatus] = useState<'idle' | 'verifying' | 'success' | 'failure'>('idle')
+
+//  Tracks the current status of the AI verification process
   const [verificationResult, setVerificationResult] = useState<{
     wasteType: string;
     quantity: string;
     confidence: number;
   } | null>(null)
+
+// Boolean flag to track if the form is currently being submitted Used to disable the submit button during submission
+
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+//   Google Maps Integration
   const [searchBox, setSearchBox] = useState<google.maps.places.SearchBox | null>(null);
 
+//   Loading the Maps JS library by using (useJsApiLoader)
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: googleMapsApiKey!,
@@ -58,6 +65,8 @@ export default function ReportPage() {
     setSearchBox(ref);
   }, []);
 
+
+//   onPlacesChanged: Called when user selects a place from the suggestions
   const onPlacesChanged = () => {
     if (searchBox) {
       const places = searchBox.getPlaces();
@@ -222,4 +231,7 @@ export default function ReportPage() {
     };
     checkUser();
   }, [router]);
+
+
+  
 }
