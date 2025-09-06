@@ -107,6 +107,32 @@ export async function createReport(
   verificationResult?: any
 ) {
   try {
+    // ✅ Properly handle verificationResult - convert to JSON string or null
+    let verificationResultForDb = null;
+    
+    if (verificationResult) {
+      try {
+        // If it's already a string, validate it's proper JSON
+        if (typeof verificationResult === "string") {
+          const parsed = JSON.parse(verificationResult);
+          // Only accept if it has the expected structure
+          if (parsed && parsed.wasteType && parsed.quantity && parsed.confidence) {
+            verificationResultForDb = verificationResult; // Keep as valid JSON string
+          }
+        } 
+        // If it's an object, stringify it
+        else if (typeof verificationResult === "object") {
+          if (verificationResult.wasteType && verificationResult.quantity && verificationResult.confidence) {
+            verificationResultForDb = JSON.stringify(verificationResult);
+          }
+        }
+      } catch (error) {
+        console.warn("Invalid verificationResult format:", verificationResult);
+        // If parsing fails, set to null
+        verificationResultForDb = null;
+      }
+    }
+
     const [report] = await db
       .insert(Reports)
       .values({
@@ -115,7 +141,7 @@ export async function createReport(
         wasteType,
         amount,
         imageUrl,
-        verificationResult,
+        verificationResult: verificationResultForDb, // Use the validated string or null
         status: "pending",
       })
       .returning()
@@ -126,13 +152,18 @@ export async function createReport(
     await updateRewardPoints(userId, pointsEarned);
 
     // Create a transaction for the earned points
-    await createTransaction(userId, 'earned_report', pointsEarned, 'Points earned for reporting waste');
+    await createTransaction(
+      userId,
+      "earned_report",
+      pointsEarned,
+      "Points earned for reporting waste"
+    );
 
     // Create a notification for the user
     await createNotification(
       userId,
       `You've earned ${pointsEarned} points for reporting waste!`,
-      'reward'
+      "reward"
     );
 
     return report;
@@ -208,6 +239,55 @@ export async function getRecentReports(limit: number = 10) {
     return reports;
   } catch (error) {
     console.error("Error fetching recent reports:", error);
+    return [];
+  }
+}
+
+
+// getAvailable Rewards function 
+export async function getAvailableRewards(userId: number) {
+  try {
+    console.log('Fetching available rewards for user:', userId);
+    
+    // Get user's total points
+    const userTransactions = await getRewardTransactions(userId) as any;
+    const userPoints = userTransactions.reduce((total:any, transaction:any) => {
+      return transaction.type.startsWith('earned') ? total + transaction.amount : total - transaction.amount;
+    }, 0);
+
+    console.log('User total points:', userPoints);
+
+    // Get available rewards from the database
+    const dbRewards = await db
+      .select({
+        id: Rewards.id,
+        name: Rewards.name,
+        cost: Rewards.points,
+        description: Rewards.description,
+        collectionInfo: Rewards.collectionInfo,
+      })
+      .from(Rewards)
+      .where(eq(Rewards.isAvailable, true))
+      .execute();
+
+    console.log('Rewards from database:', dbRewards);
+
+    // Combine user points and database rewards
+    const allRewards = [
+      {
+        id: 0, // Use a special ID for user's points
+        name: "Your Points",
+        cost: userPoints,
+        description: "Redeem your earned points",
+        collectionInfo: "Points earned from reporting and collecting waste"
+      },
+      ...dbRewards
+    ];
+
+    console.log('All available rewards:', allRewards);
+    return allRewards;
+  } catch (error) {
+    console.error("Error fetching available rewards:", error);
     return [];
   }
 }

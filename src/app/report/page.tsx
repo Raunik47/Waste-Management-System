@@ -1,431 +1,391 @@
-'use client'
-import { useState, useCallback, useEffect } from 'react'
-import {  MapPin, Upload, CheckCircle, Loader } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { StandaloneSearchBox,  useJsApiLoader } from '@react-google-maps/api'
-import { Libraries } from '@react-google-maps/api';
+"use client";
 
-import { useRouter } from 'next/navigation';
-import { toast } from 'react-hot-toast'
-import { createReport, createUser, getRecentReports, getUserByEmail } from '../../../utils/db/actions';
+import { useState, useCallback, useEffect } from "react";
+import { MapPin, CheckCircle, Loader, Recycle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Autocomplete, useJsApiLoader } from "@react-google-maps/api";
+import { Libraries } from "@react-google-maps/api";
+import { useRouter } from "next/navigation";
+import { toast } from "react-hot-toast";
 
+import Upload from "@/components/UploadWidget";
+import { verifyWaste } from "@/lib/gemini";
+import {
+  createReport,
+  createUser,
+  getRecentReports,
+  getUserByEmail,
+} from "../../../utils/db/actions";
 
-
-const geminiApiKey = process.env.GEMINI_API_KEY
-
-const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY
-
-   const libraries: Libraries = ['places'];
+const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+const libraries: Libraries = ["places"];
 
 export default function ReportPage() {
   const [user, setUser] = useState<{ id: number; email: string; name: string } | null>(null);
   const router = useRouter();
 
-  const [reports, setReports] = useState<Array<{
-    id: number;
-    location: string;
-    wasteType: string;
-    amount: string;
-    createdAt: string;
-  }>>([]);
+  const [reports, setReports] = useState<
+    Array<{ id: number; location: string; wasteType: string; amount: string; createdAt: string }>
+  >([]);
 
   const [newReport, setNewReport] = useState({
-    location: '',
-    type: '',
-    amount: '',
-  })
+    location: "",
+    type: "",
+    amount: "",
+    image: "",
+  });
 
-  const [file, setFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
-  const [verificationStatus, setVerificationStatus] = useState<'idle' | 'verifying' | 'success' | 'failure'>('idle')
-
-//  Tracks the current status of the AI verification process
+  const [preview, setPreview] = useState<string | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<
+    "idle" | "verifying" | "success" | "failure"
+  >("idle");
   const [verificationResult, setVerificationResult] = useState<{
     wasteType: string;
     quantity: string;
     confidence: number;
-  } | null>(null)
+  } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-// Boolean flag to track if the form is currently being submitted Used to disable the submit button during submission
-
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-//   Google Maps Integration
-  const [searchBox, setSearchBox] = useState<google.maps.places.SearchBox | null>(null);
-
-//   Loading the Maps JS library by using (useJsApiLoader)
+  // Google Maps
+  const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
   const { isLoaded } = useJsApiLoader({
-    id: 'google-map-script',
+    id: "google-map-script",
     googleMapsApiKey: googleMapsApiKey!,
-    libraries: libraries
+    libraries,
   });
 
-  const onLoad = useCallback((ref: google.maps.places.SearchBox) => {
-    setSearchBox(ref);
+  const onLoad = useCallback((ref: google.maps.places.Autocomplete) => {
+    setAutocomplete(ref);
   }, []);
 
-
-//   onPlacesChanged: Called when user selects a place from the suggestions
-  const onPlacesChanged = () => {
-    if (searchBox) {
-      const places = searchBox.getPlaces();
-      if (places && places.length > 0) {
-        const place = places[0];
-        setNewReport(prev => ({
+  const onPlaceChanged = () => {
+    if (autocomplete) {
+      const place = autocomplete.getPlace();
+      if (place?.formatted_address) {
+        setNewReport((prev) => ({
           ...prev,
-          location: place.formatted_address || '',
+          location: place.formatted_address || "",
         }));
       }
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target
-    setNewReport({ ...newReport, [name]: value })
-  }
-
-//   Purpose: Handle image file selection and create preview
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0]
-      setFile(selectedFile)
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setPreview(e.target?.result as string)
-      }
-      reader.readAsDataURL(selectedFile)
-    }
-  }
-
-//   Purpose: Convert file to base64 string (promise-based version)
-
-  const readFileAsBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+  // Input handler
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setNewReport((prev) => ({ ...prev, [name]: value }));
   };
 
-//   Purpose: Send image to Gemini AI for waste analysis and verification
-
+  // ✅ Verify handler
   const handleVerify = async () => {
-    if (!file) return
-
-    setVerificationStatus('verifying')
-    
-    try {
-        // Initialize Gemini AI client
-      const genAI = new GoogleGenerativeAI(geminiApiKey!);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-       // Convert image to base64 for API
-      const base64Data = await readFileAsBase64(file);
-
-       // Prepare image data for Gemini API
-      const imageParts = [
-        {
-          inlineData: {
-            data: base64Data.split(',')[1], // Remove data URL prefix
-            mimeType: file.type, // e.g., "image/jpeg"
-          },
-        },
-      ];
-
-      
-    // Detailed prompt for AI analysis
-      const prompt = `You are an expert in waste management and recycling. Analyze this image and provide:
-        1. The type of waste (e.g., plastic, paper, glass, metal, organic)
-        2. An estimate of the quantity or amount (in kg or liters)
-        3. Your confidence level in this assessment (as a percentage)
-        
-        Respond in JSON format like this:
-        {
-          "wasteType": "type of waste",
-          "quantity": "estimated quantity with unit",
-          "confidence": confidence level as a number between 0 and 1
-        }`;
-
- // Send request to Gemini AI
-      const result = await model.generateContent([prompt, ...imageParts]);
-      const response = await result.response;
-      const text = response.text();
-      
-      try {
-           // Parse AI response
-        const parsedResult = JSON.parse(text);
-        // Validate response structure
-        if (parsedResult.wasteType && parsedResult.quantity && parsedResult.confidence) {
-            
-        // Update state with AI results
-          setVerificationResult(parsedResult);
-          setVerificationStatus('success');
-          setNewReport({
-            ...newReport,
-            type: parsedResult.wasteType, // Auto-fill waste type
-            amount: parsedResult.quantity  // Auto-fill amount
-          });
-        } else {
-
-             // Handle invalid response
-          console.error('Invalid verification result:', parsedResult);
-          setVerificationStatus('failure');
-        }
-      } catch (error) {
-        console.error('Failed to parse JSON response:', text);
-        setVerificationStatus('failure');
-      }
-    } catch (error) {
-          // Handle JSON parsing error
-      console.error('Error verifying waste:', error);
-      setVerificationStatus('failure');
-    }
-  }
-
-//   Purpose: Submit the complete waste report to backend
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (verificationStatus !== 'success' || !user) {
-      toast.error('Please verify the waste before submitting or log in.');
+    if (!preview) {
+      toast.error("Please upload an image first.");
       return;
     }
-    
-    setIsSubmitting(true);
+
+    setVerificationStatus("verifying");
+    setVerificationResult(null);
+
     try {
-         // Send data to backend
-      const report = await createReport(
+      const result = await verifyWaste(preview);
+
+      if (!result || !result.wasteType) {
+        setVerificationStatus("failure");
+        toast.error("Could not verify the image. Try again.");
+        return;
+      }
+
+      setVerificationResult({
+        ...result,
+        wasteType: result.wasteType.join(", "),
+      });
+      setVerificationStatus("success");
+
+      setNewReport((prev) => ({
+        ...prev,
+        type: result.wasteType.join(", "),
+        amount: result.quantity,
+      }));
+    } catch (error) {
+      console.error("handleVerify error:", error);
+      setVerificationStatus("failure");
+      toast.error("Verification failed. Try again later.");
+    }
+  };
+
+  // ✅ Submit
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (verificationStatus !== "success" || !user) {
+      toast.error("Please verify the waste before submitting or log in.");
+      return;
+    }
+    setIsSubmitting(true);
+
+    try {
+      const report = (await createReport(
         user.id,
         newReport.location,
         newReport.type,
         newReport.amount,
         preview || undefined,
-        verificationResult ? JSON.stringify(verificationResult) : undefined
-      ) as any;
-      
-      // Format report for UI display
+        newReport.type,
+        verificationResult || undefined
+      )) as any;
+
+      if (!report) {
+        toast.error("Failed to create report");
+        setIsSubmitting(false);
+        return;
+      }
+
       const formattedReport = {
         id: report.id,
         location: report.location,
         wasteType: report.wasteType,
         amount: report.amount,
-        createdAt: report.createdAt.toISOString().split('T')[0] 
+        createdAt: report.createdAt.toISOString().split("T")[0],
       };
-      
-       
-    // Update UI with new report
-      setReports([formattedReport, ...reports]);
-      setNewReport({ location: '', type: '', amount: '' });
-      setFile(null);
+
+      setReports((prev) => [formattedReport, ...prev]);
+      setNewReport({ location: "", type: "", amount: "", image: "" });
       setPreview(null);
-      setVerificationStatus('idle');
+      setVerificationStatus("idle");
       setVerificationResult(null);
-      
- // Show success message
-      toast.success(`Report submitted successfully! You've earned points for reporting waste.`);
+      toast.success("Report submitted successfully!");
     } catch (error) {
-      console.error('Error submitting report:', error);
-      toast.error('Failed to submit report. Please try again.');
+      console.error("Error submitting report:", error);
+      toast.error("Failed to submit report. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // ✅ Fetch user + reports
   useEffect(() => {
     const checkUser = async () => {
-      const email = localStorage.getItem('userEmail');
+      const email = localStorage.getItem("userEmail");
       if (email) {
-        let user = await getUserByEmail(email);
-        if (!user) {
-          user = await createUser(email, 'Anonymous User');
-        }
-        setUser(user);
-        
+        let u = await getUserByEmail(email);
+        if (!u) u = await createUser(email, "Anonymous User");
+        setUser(u);
+
         const recentReports = await getRecentReports();
-        const formattedReports = recentReports.map(report => ({
-          ...report,
-          createdAt: report.createdAt.toISOString().split('T')[0]
-        }));
-        setReports(formattedReports);
+        setReports(
+          recentReports.map((r) => ({
+            ...r,
+            createdAt: r.createdAt.toISOString().split("T")[0],
+          }))
+        );
       } else {
-        router.push('/login'); 
+        router.push("/login");
       }
     };
     checkUser();
   }, [router]);
 
+return (
+  <div className="min-h-screen bg-gradient-to-br from-green-100 via-blue-50 to-green-200 p-8">
+    {/* Background gradient: light green → light blue → soft green */}
+    
+    {/* Page Title */}
+    <h1 className="text-5xl font-extrabold mb-12 text-center 
+                   bg-gradient-to-r from-green-600 to-blue-600 
+                   bg-clip-text text-transparent drop-shadow-md">
+      {/* Gradient text: dark green → dark blue */}
+      🌱 Report Environmental Waste
+    </h1>
 
+    {/* Form */}
+    <form
+      onSubmit={handleSubmit}
+      className="bg-white/70 backdrop-blur-xl border border-green-200 
+                 p-10 rounded-3xl shadow-2xl mb-14 
+                 transition-transform hover:scale-[1.01]"
+    >
+      {/* Form background: translucent white with green border */}
 
-   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-3xl font-semibold mb-6 text-gray-800">Report waste</h1>
-      
-      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl shadow-lg mb-12">
-        <div className="mb-8">
-          <label htmlFor="waste-image" className="block text-lg font-medium text-gray-700 mb-2">
-            Upload Waste Image
-          </label>
-          <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:border-green-500 transition-colors duration-300">
-            <div className="space-y-1 text-center">
-              <Upload className="mx-auto h-12 w-12 text-gray-400" />
-              <div className="flex text-sm text-gray-600">
-                <label
-                  htmlFor="waste-image"
-                  className="relative cursor-pointer bg-white rounded-md font-medium text-green-600 hover:text-green-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-green-500"
-                >
-                  <span>Upload a file</span>
-                  <input id="waste-image" name="waste-image" type="file" className="sr-only" onChange={handleFileChange} accept="image/*" />
-                </label>
-                <p className="pl-1">or drag and drop</p>
+      <Upload preview={preview} setPreview={setPreview} setNewReport={setNewReport} />
+
+      {/* Verify Button */}
+      <Button
+        type="button"
+        onClick={handleVerify}
+        className="w-full mb-8 
+                   bg-gradient-to-r from-green-500 to-green-700 
+                   hover:from-green-600 hover:to-green-800 
+                   text-white py-3 text-lg rounded-xl 
+                   shadow-lg hover:shadow-green-400/50 transition-all"
+        disabled={!preview || verificationStatus === 'verifying'}
+      >
+        {/* Button background: gradient green (500→700), hover darker green */}
+        {/* Text color: white */}
+        {verificationStatus === 'verifying' ? (
+          <>
+            <Loader className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
+            {/* Loader color: white */}
+            Verifying...
+          </>
+        ) : (
+          "Verify Waste ♻️"
+        )}
+      </Button>
+
+      {/* Verification Result */}
+      {verificationStatus === 'success' && verificationResult && (
+        <div className="bg-gradient-to-r from-green-100 to-green-200 
+                        border-l-4 border-green-600 p-5 mb-8 
+                        rounded-2xl shadow-lg animate-fadeIn">
+          {/* Box background: gradient light green (100→200), left border dark green */}
+          <div className="flex items-center">
+            <CheckCircle className="h-7 w-7 text-green-600 mr-3" />
+            {/* Success icon color: dark green */}
+            <div>
+              <h3 className="text-lg font-bold text-green-800">
+                {/* Title text: deep green */}
+                Verification Successful ✅
+              </h3>
+              <div className="mt-2 text-sm text-green-700 space-y-1">
+                {/* Body text: medium green */}
+                <p>🌍 Waste Type: {verificationResult.wasteType}</p>
+                <p>⚖️ Quantity: {verificationResult.quantity}</p>
+                <p>📊 Confidence: {(verificationResult.confidence * 100).toFixed(2)}%</p>
               </div>
-              <p className="text-xs text-gray-500">PNG, JPG, GIF up to 10MB</p>
             </div>
           </div>
         </div>
-        
-        {preview && (
-          <div className="mt-4 mb-8">
-            <img src={preview} alt="Waste preview" className="max-w-full h-auto rounded-xl shadow-md" />
-          </div>
-        )}
-        
-        <Button 
-          type="button" 
-          onClick={handleVerify} 
-          className="w-full mb-8 bg-blue-600 hover:bg-blue-700 text-white py-3 text-lg rounded-xl transition-colors duration-300" 
-          disabled={!file || verificationStatus === 'verifying'}
-        >
-          {verificationStatus === 'verifying' ? (
-            <>
-              <Loader className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
-              Verifying...
-            </>
-          ) : 'Verify Waste'}
-        </Button>
+      )}
 
-        {verificationStatus === 'success' && verificationResult && (
-          <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-8 rounded-r-xl">
-            <div className="flex items-center">
-              <CheckCircle className="h-6 w-6 text-green-400 mr-3" />
-              <div>
-                <h3 className="text-lg font-medium text-green-800">Verification Successful</h3>
-                <div className="mt-2 text-sm text-green-700">
-                  <p>Waste Type: {verificationResult.wasteType}</p>
-                  <p>Quantity: {verificationResult.quantity}</p>
-                  <p>Confidence: {(verificationResult.confidence * 100).toFixed(2)}%</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-          <div>
-            <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">Location</label>
-            {isLoaded ? (
-              <StandaloneSearchBox
-                onLoad={onLoad}
-                onPlacesChanged={onPlacesChanged}
-              >
-                <input
-                  type="text"
-                  id="location"
-                  name="location"
-                  value={newReport.location}
-                  onChange={handleInputChange}
-                  required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300"
-                  placeholder="Enter waste location"
-                />
-              </StandaloneSearchBox>
-            ) : (
+      {/* Inputs */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+        <div>
+          <label className="block text-sm font-semibold text-green-700 mb-2">
+            {/* Label color: medium green */}
+            📍 Location
+          </label>
+          {isLoaded ? (
+            <Autocomplete onLoad={onLoad} onPlaceChanged={onPlaceChanged}>
               <input
                 type="text"
-                id="location"
                 name="location"
+                placeholder="Enter waste location"
                 value={newReport.location}
                 onChange={handleInputChange}
-                required
-                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300"
-                placeholder="Enter waste location"
+                className="w-full px-4 py-3 border border-green-300 
+                           rounded-xl focus:ring-2 focus:ring-green-500 shadow-sm"
+                /* Input border: light green, focus ring: bright green */
               />
-            )}
-          </div>
-          <div>
-            <label htmlFor="type" className="block text-sm font-medium text-gray-700 mb-1">Waste Type</label>
+            </Autocomplete>
+          ) : (
             <input
               type="text"
-              id="type"
-              name="type"
-              value={newReport.type}
+              name="location"
+              value={newReport.location}
               onChange={handleInputChange}
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300 bg-gray-100"
-              placeholder="Verified waste type"
-              readOnly
+              className="w-full px-4 py-3 border border-green-300 
+                         rounded-xl focus:ring-2 focus:ring-green-500 shadow-sm"
+              /* Same as above: border light green, focus bright green */
+              placeholder="Enter waste location"
             />
-          </div>
-          <div>
-            <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">Estimated Amount</label>
-            <input
-              type="text"
-              id="amount"
-              name="amount"
-              value={newReport.amount}
-              onChange={handleInputChange}
-              required
-              className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300 bg-gray-100"
-              placeholder="Verified amount"
-              readOnly
-            />
-          </div>
+          )}
         </div>
-        <Button 
-          type="submit" 
-          className="w-full bg-green-600 hover:bg-green-700 text-white py-3 text-lg rounded-xl transition-colors duration-300 flex items-center justify-center"
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <>
-              <Loader className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
-              Submitting...
-            </>
-          ) : 'Submit Report'}
-        </Button>
-      </form>
 
-      <h2 className="text-3xl font-semibold mb-6 text-gray-800">Recent Reports</h2>
-      <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-        <div className="max-h-96 overflow-y-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 sticky top-0">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {reports.map((report) => (
-                <tr key={report.id} className="hover:bg-gray-50 transition-colors duration-200">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <MapPin className="inline-block w-4 h-4 mr-2 text-green-500" />
-                    {report.location}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{report.wasteType}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{report.amount}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{report.createdAt}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div>
+          <label className="block text-sm font-semibold text-green-700 mb-2">
+            {/* Label color: medium green */}
+            🗑 Waste Type
+          </label>
+          <input
+            type="text"
+            name="type"
+            value={newReport.type}
+            readOnly
+            className="w-full px-4 py-3 border border-gray-300 
+                       rounded-xl bg-gray-100 shadow-inner"
+            /* Gray border, gray background */
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-green-700 mb-2">
+            {/* Label color: medium green */}
+            ⚖️ Estimated Amount
+          </label>
+          <input
+            type="text"
+            name="amount"
+            value={newReport.amount}
+            readOnly
+            className="w-full px-4 py-3 border border-gray-300 
+                       rounded-xl bg-gray-100 shadow-inner"
+            /* Gray border, gray background */
+          />
         </div>
       </div>
+
+      {/* Submit Button */}
+      <Button
+        type="submit"
+        className="w-full 
+                   bg-gradient-to-r from-blue-600 to-indigo-600 
+                   hover:from-blue-700 hover:to-indigo-700 
+                   text-white py-3 text-lg rounded-xl 
+                   shadow-lg hover:shadow-indigo-400/50 transition-all"
+        disabled={isSubmitting}
+      >
+        {/* Button background: gradient blue (600→indigo 600), hover darker */}
+        {/* Text color: white */}
+        {isSubmitting ? (
+          <>
+            <Loader className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
+            {/* Loader color: white */}
+            Submitting...
+          </>
+        ) : (
+          "Submit Report 🌍"
+        )}
+      </Button>
+    </form>
+
+    {/* Recent Reports */}
+    <h2 className="text-3xl font-extrabold mb-8 text-green-700 flex items-center gap-3">
+      {/* Heading text: medium green */}
+      <Recycle className="w-8 h-8 text-green-600" /> 
+      {/* Icon color: dark green */}
+      Recent Reports
+    </h2>
+
+    <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+      {reports.map((report) => (
+       <div
+  key={report.id}
+
+  // card color
+  className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg 
+             p-6 border border-green-200 
+             hover:shadow-2xl hover:scale-[1.02] transition-all 
+             hover:bg-gradient-to-r hover:from-emerald-100 hover:to-blue-100"
+>
+          {/* Card background: translucent white, border light green */}
+          <div className="flex items-center gap-2 mb-3 text-green-700 font-semibold">
+            <MapPin className="w-6 h-6 text-green-500" /> 
+            {/* Map pin color: bright green */}
+            {report.location}
+          </div>
+          <p className="text-gray-800">
+            <span className="font-medium">🗑 Type:</span> {report.wasteType}
+          </p>
+          <p className="text-gray-800">
+            <span className="font-medium">⚖️ Amount:</span> {report.amount}
+          </p>
+          <p className="text-sm text-gray-500 mt-3">
+            {/* Date text: muted gray */}
+            📅 {report.createdAt}
+          </p>
+        </div>
+      ))}
     </div>
-  )
-  
+  </div>
+);
 }
